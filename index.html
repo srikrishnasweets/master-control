@@ -335,6 +335,44 @@
       font-weight: 800;
     }
 
+    .modal-copy {
+      margin: 0;
+      color: #4f6783;
+      font-size: 0.86rem;
+      font-weight: 600;
+      line-height: 1.45;
+    }
+
+    .replace-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .replace-option {
+      border: 1px solid #c9d7e8;
+      border-radius: 10px;
+      background: #f7faff;
+      color: #244d7a;
+      padding: 9px 10px;
+      text-align: left;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: border-color 120ms ease, background 120ms ease;
+    }
+
+    .replace-option:hover {
+      border-color: #b7cbe2;
+      background: #eff5ff;
+    }
+
+    .replace-option.active {
+      border-color: #84b2ff;
+      background: #eaf2ff;
+      color: #1e4f87;
+      box-shadow: inset 0 0 0 1px #84b2ff;
+    }
+
     @media (max-width: 860px) {
       .list {
         grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -448,6 +486,18 @@
     </div>
   </div>
 
+  <div id="currentLimitModal" class="modal" hidden>
+    <div class="modal-card">
+      <h3 class="modal-head">Replace Current Screen</h3>
+      <p id="currentLimitCopy" class="modal-copy"></p>
+      <div id="currentLimitList" class="replace-list"></div>
+      <div class="form-actions">
+        <button id="confirmCurrentLimitBtn" class="btn primary" type="button" disabled>Replace</button>
+        <button id="cancelCurrentLimitBtn" class="btn" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <p id="status" class="status" hidden></p>
 
   <script>
@@ -476,6 +526,11 @@
     const moveTargetMasterEl = document.getElementById("moveTargetMaster");
     const confirmMoveBtnEl = document.getElementById("confirmMoveBtn");
     const cancelMoveBtnEl = document.getElementById("cancelMoveBtn");
+    const currentLimitModalEl = document.getElementById("currentLimitModal");
+    const currentLimitCopyEl = document.getElementById("currentLimitCopy");
+    const currentLimitListEl = document.getElementById("currentLimitList");
+    const confirmCurrentLimitBtnEl = document.getElementById("confirmCurrentLimitBtn");
+    const cancelCurrentLimitBtnEl = document.getElementById("cancelCurrentLimitBtn");
 
     let tvMap = new Map();
     let selectedTvId = "";
@@ -484,6 +539,8 @@
     let pending = false;
     let statusTimer = null;
     let movingProduct = "";
+    let currentLimitResolve = null;
+    let selectedReplacementKey = "";
 
     function normalizeTvId(value) {
       const text = String(value ?? "").trim();
@@ -524,6 +581,8 @@
       cancelAddBtnEl.disabled = isPending;
       confirmMoveBtnEl.disabled = isPending;
       cancelMoveBtnEl.disabled = isPending;
+      confirmCurrentLimitBtnEl.disabled = isPending || !selectedReplacementKey;
+      cancelCurrentLimitBtnEl.disabled = isPending;
     }
 
     function setStatus(message, tone) {
@@ -700,6 +759,64 @@
       });
     }
 
+    function currentScreenProductsForTv(tvId) {
+      const rows = tvMap.get(tvId) || [];
+      const unique = new Map();
+      rows.forEach((row) => {
+        if (!isScreenTrue(row)) return;
+        const master = getMaster(row);
+        const product = getProduct(row);
+        if (!master || !product) return;
+        const key = `${master}::${product}`;
+        if (!unique.has(key)) unique.set(key, { key, master, product });
+      });
+      return [...unique.values()].sort((a, b) => {
+        const byMaster = a.master.localeCompare(b.master);
+        if (byMaster !== 0) return byMaster;
+        return a.product.localeCompare(b.product);
+      });
+    }
+
+    function closeCurrentLimitModal(selectedItem) {
+      currentLimitModalEl.hidden = true;
+      currentLimitListEl.innerHTML = "";
+      currentLimitCopyEl.textContent = "";
+      selectedReplacementKey = "";
+      confirmCurrentLimitBtnEl.disabled = true;
+      if (typeof currentLimitResolve === "function") {
+        const resolve = currentLimitResolve;
+        currentLimitResolve = null;
+        resolve(selectedItem || null);
+      }
+    }
+
+    function askCurrentToReplace(existingItems, newMaster, newProduct) {
+      return new Promise((resolve) => {
+        currentLimitResolve = resolve;
+        selectedReplacementKey = "";
+        confirmCurrentLimitBtnEl.disabled = true;
+        currentLimitCopyEl.textContent =
+          `Only 2 current screens are allowed per TV. Select one current screen to remove before enabling ${newMaster} / ${newProduct}.`;
+        currentLimitListEl.innerHTML = existingItems.map((item) => `
+          <button class="replace-option" type="button" data-replace-key="${escapeHtml(item.key)}">
+            ${escapeHtml(item.master)} / ${escapeHtml(item.product)}
+          </button>
+        `).join("");
+        currentLimitModalEl.hidden = false;
+
+        currentLimitListEl.querySelectorAll("[data-replace-key]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const picked = btn.getAttribute("data-replace-key") || "";
+            selectedReplacementKey = picked;
+            confirmCurrentLimitBtnEl.disabled = !picked || pending;
+            currentLimitListEl.querySelectorAll("[data-replace-key]").forEach((b) => {
+              b.classList.toggle("active", b === btn);
+            });
+          });
+        });
+      });
+    }
+
     async function callApi(action, payload) {
       const res = await fetch(API_URL, {
         method: "POST",
@@ -761,6 +878,43 @@
 
     async function setCurrentProduct(product, enabled) {
       if (pending) return;
+      if (enabled) {
+        const currentItems = currentScreenProductsForTv(selectedTvId);
+        const targetKey = `${selectedMaster}::${product}`;
+        const isAlreadyCurrent = currentItems.some((item) => item.key === targetKey);
+        if (!isAlreadyCurrent && currentItems.length >= 2) {
+          const toDisable = await askCurrentToReplace(currentItems, selectedMaster, product);
+          if (!toDisable) {
+            setStatus("Enable cancelled.", "error");
+            return;
+          }
+          setPending(true);
+          setStatus("Updating current screens...", "");
+          try {
+            await callApi("setProductScreenState", {
+              tvId: selectedTvId,
+              master: toDisable.master,
+              product: toDisable.product,
+              screen: false
+            });
+            await callApi("setProductScreenState", {
+              tvId: selectedTvId,
+              master: selectedMaster,
+              product,
+              screen: true
+            });
+            await loadData(false, true, true);
+            renderProductView();
+            setStatus(`Current changed: removed ${toDisable.product}, enabled ${product}`, "ok");
+          } catch (error) {
+            setStatus(error.message || "Failed to update current screen.", "error");
+          } finally {
+            setPending(false);
+          }
+          return;
+        }
+      }
+
       setPending(true);
       setStatus(enabled ? "Adding current screen..." : "Removing current screen...", "");
       try {
@@ -955,6 +1109,24 @@
 
     moveModalEl.addEventListener("click", (event) => {
       if (event.target === moveModalEl && !pending) closeMoveModal();
+    });
+
+    confirmCurrentLimitBtnEl.addEventListener("click", () => {
+      if (pending || !selectedReplacementKey) return;
+      const rows = currentScreenProductsForTv(selectedTvId);
+      const selected = rows.find((item) => item.key === selectedReplacementKey) || null;
+      closeCurrentLimitModal(selected);
+    });
+
+    cancelCurrentLimitBtnEl.addEventListener("click", () => {
+      if (pending) return;
+      closeCurrentLimitModal(null);
+    });
+
+    currentLimitModalEl.addEventListener("click", (event) => {
+      if (event.target === currentLimitModalEl && !pending) {
+        closeCurrentLimitModal(null);
+      }
     });
 
     loadData(true);
