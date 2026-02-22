@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>TV Control Center</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --panel: #ffffff;
+      --line: #dbe3ef;
+      --ink: #1c2b3a;
+      --muted: #6a7a8b;
+      --primary: #1e5ec8;
+      --primary-700: #164ba3;
+      --primary-soft: #eef4ff;
+      --danger: #c23e3e;
+      --danger-soft: #fff3f3;
+      --success: #1f7f52;
+      --success-soft: #eefbf4;
+      --radius: 14px;
+      --shadow: 0 10px 24px rgba(15, 35, 58, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Noto Sans", sans-serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, #f7f9fd 0%, var(--bg) 100%);
+    }
+
+    .app {
+      min-height: 100dvh;
+      margin: 0 auto;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 10px;
+      padding: 10px 12px calc(env(safe-area-inset-bottom, 0px) + 14px);
+    }
+
+    .topbar {
+      color: var(--primary);
+      padding: 14px 16px;
+    }
+
+    .topbar h1 {
+      margin: 0;
+      font-size: clamp(1.05rem, 2vw, 1.35rem);
+      letter-spacing: 0.01em;
+    }
+
+    .topbar p {
+      margin: 4px 0 0;
+      font-size: 0.86rem;
+      opacity: 0.95;
+    }
+
+    .toolbar {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 10px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+      color: #234c79;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      border: 1px solid #c9d7e8;
+      border-radius: 10px;
+      background: #f7faff;
+      color: #244d7a;
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+
+    .btn.primary {
+      background: linear-gradient(130deg, var(--primary), var(--primary-700));
+      border-color: var(--primary-700);
+      color: #fff;
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .content {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 12px;
+      box-shadow: 0 6px 16px rgba(15, 35, 58, 0.06);
+    }
+
+    .clickable {
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease;
+    }
+
+    .clickable:hover {
+      transform: translateY(-1px);
+      border-color: #bfd1e7;
+    }
+
+    .row-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 800;
+      color: #1f466f;
+      line-height: 1.25;
+      font-size: 1rem;
+    }
+
+    .row-meta {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.83rem;
+      font-weight: 600;
+    }
+
+    .badge {
+      margin-top: 8px;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid #b8deca;
+      background: var(--success-soft);
+      color: var(--success);
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 0.74rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
+    .product-tools {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .mini {
+      border: 1px solid #c9d8ea;
+      border-radius: 9px;
+      background: #f4f8ff;
+      color: #244d79;
+      font-size: 0.76rem;
+      font-weight: 800;
+      padding: 6px 9px;
+      cursor: pointer;
+    }
+
+    .mini.current {
+      border-color: #b8deca;
+      background: var(--success-soft);
+      color: var(--success);
+    }
+
+    .mini.danger {
+      border-color: #efc6c6;
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    .form-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .form-panel[hidden] { display: none; }
+
+    .form-title {
+      margin: 0;
+      font-size: 0.96rem;
+      color: #244e7b;
+      font-weight: 800;
+    }
+
+    .form-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .field label {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: #4f6783;
+      letter-spacing: 0.02em;
+    }
+
+    .field input,
+    .field select {
+      border: 1px solid #c8d6e7;
+      border-radius: 9px;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 0.86rem;
+      color: #1c3653;
+      background: #fbfdff;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .status {
+      position: fixed;
+      right: 14px;
+      bottom: 14px;
+      z-index: 50;
+      max-width: min(86vw, 420px);
+      margin: 0;
+      border-radius: 10px;
+      border: 1px solid #d3e0f0;
+      background: #f6f9ff;
+      color: #4f657f;
+      padding: 10px 12px;
+      font-size: 0.84rem;
+      font-weight: 700;
+      box-shadow: 0 12px 26px rgba(12, 33, 55, 0.15);
+    }
+
+    .status.ok {
+      border-color: #bfe4ce;
+      background: var(--success-soft);
+      color: var(--success);
+    }
+
+    .status.error {
+      border-color: #efc9c9;
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    .status[hidden] { display: none; }
+
+    .empty {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+      padding: 8px 2px;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: rgba(14, 27, 42, 0.5);
+      display: grid;
+      place-items: center;
+      padding: 14px;
+    }
+
+    .modal[hidden] { display: none; }
+
+    .modal-card {
+      width: min(460px, 100%);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 20px 42px rgba(13, 30, 49, 0.3);
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .modal-head {
+      margin: 0;
+      font-size: 1rem;
+      color: #234c79;
+      font-weight: 800;
+    }
+
+    @media (max-width: 860px) {
+      .list {
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      }
+      .form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 560px) {
+      .app {
+        padding: 8px 10px calc(env(safe-area-inset-bottom, 0px) + 12px);
+      }
+      .actions {
+        width: 100%;
+      }
+      .actions .btn {
+        flex: 1;
+      }
+      .list {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+      .status {
+        right: 10px;
+        left: 10px;
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <h1>TV Control Center</h1>
+    </header>
+
+    <section class="toolbar">
+      <h2 id="viewTitle" class="title">TV IDs</h2>
+      <div class="actions">
+        <button id="backBtn" class="btn" type="button" hidden>Back</button>
+        <button id="addBtn" class="btn primary" type="button" hidden>Add Product</button>
+        <button id="refreshBtn" class="btn" type="button">Refresh</button>
+      </div>
+    </section>
+
+    <section class="content">
+      <div id="list" class="list"></div>
+
+      <section id="addPanel" class="form-panel" hidden>
+        <h3 class="form-title">Add Product To Selected Master</h3>
+        <div class="form-grid">
+          <div class="field">
+            <label for="fProduct">Product</label>
+            <input id="fProduct" type="text" placeholder="Product name">
+          </div>
+          <div class="field">
+            <label for="fQty">Qty</label>
+            <input id="fQty" type="number" step="0.001" placeholder="0">
+          </div>
+          <div class="field">
+            <label for="fPack">Pack Format</label>
+            <input id="fPack" type="text" placeholder="PACKED">
+          </div>
+          <div class="field">
+            <label for="fGroup">Group</label>
+            <input id="fGroup" type="text" placeholder="Group">
+          </div>
+          <div class="field">
+            <label for="fBranch">Branch</label>
+            <input id="fBranch" type="text" placeholder="Branch">
+          </div>
+          <div class="field">
+            <label for="fScreen">Screen</label>
+            <select id="fScreen">
+              <option value="false" selected>false</option>
+              <option value="true">true</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button id="saveAddBtn" class="btn primary" type="button">Save</button>
+          <button id="cancelAddBtn" class="btn" type="button">Cancel</button>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <div id="moveModal" class="modal" hidden>
+    <div class="modal-card">
+      <h3 class="modal-head">Move Product</h3>
+      <div class="field">
+        <label for="moveProductName">Product</label>
+        <input id="moveProductName" type="text" readonly>
+      </div>
+      <div class="field">
+        <label for="moveTargetTv">Target TV ID</label>
+        <select id="moveTargetTv"></select>
+      </div>
+      <div class="field">
+        <label for="moveTargetMaster">Target Master</label>
+        <select id="moveTargetMaster"></select>
+      </div>
+      <div class="form-actions">
+        <button id="confirmMoveBtn" class="btn primary" type="button">Move</button>
+        <button id="cancelMoveBtn" class="btn" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <p id="status" class="status" hidden></p>
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbwba-s2aTC4qHxY5JB1xEZnL0mWJ2ppc5rw-vOWS7szRKqWVlJ75q0C1XpzxXpv1gXR/exec";
+    const LAST_TV_KEY = "tvControlSelectedTv";
+
+    const viewTitleEl = document.getElementById("viewTitle");
+    const listEl = document.getElementById("list");
+    const backBtnEl = document.getElementById("backBtn");
+    const addBtnEl = document.getElementById("addBtn");
+    const refreshBtnEl = document.getElementById("refreshBtn");
+    const addPanelEl = document.getElementById("addPanel");
+    const saveAddBtnEl = document.getElementById("saveAddBtn");
+    const cancelAddBtnEl = document.getElementById("cancelAddBtn");
+    const statusEl = document.getElementById("status");
+    const fProductEl = document.getElementById("fProduct");
+    const fQtyEl = document.getElementById("fQty");
+    const fPackEl = document.getElementById("fPack");
+    const fGroupEl = document.getElementById("fGroup");
+    const fBranchEl = document.getElementById("fBranch");
+    const fScreenEl = document.getElementById("fScreen");
+
+    const moveModalEl = document.getElementById("moveModal");
+    const moveProductNameEl = document.getElementById("moveProductName");
+    const moveTargetTvEl = document.getElementById("moveTargetTv");
+    const moveTargetMasterEl = document.getElementById("moveTargetMaster");
+    const confirmMoveBtnEl = document.getElementById("confirmMoveBtn");
+    const cancelMoveBtnEl = document.getElementById("cancelMoveBtn");
+
+    let tvMap = new Map();
+    let selectedTvId = "";
+    let selectedMaster = "";
+    let currentView = "tv";
+    let pending = false;
+    let statusTimer = null;
+    let movingProduct = "";
+
+    function normalizeTvId(value) {
+      const text = String(value ?? "").trim();
+      if (!text) return "";
+      if (/^\d+$/.test(text)) return String(Number(text));
+      return text;
+    }
+
+    function normalizeKey(value) {
+      return String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    }
+
+    function getValue(row, aliases) {
+      if (!row || typeof row !== "object") return "";
+      const wanted = aliases.map(normalizeKey);
+      const found = Object.keys(row).find((key) => wanted.includes(normalizeKey(key)));
+      return found ? row[found] : "";
+    }
+
+    function getTvId(row) { return normalizeTvId(getValue(row, ["tvid", "tv id", "tv_id"])); }
+    function getMaster(row) { return String(getValue(row, ["master"]) || "").trim(); }
+    function getProduct(row) { return String(getValue(row, ["product"]) || "").trim(); }
+    function getPack(row) { return String(getValue(row, ["packFormat", "pack format"]) || "").trim(); }
+    function getGroup(row) { return String(getValue(row, ["group"]) || "").trim(); }
+    function getBranch(row) { return String(getValue(row, ["branch"]) || "").trim(); }
+    function getQty(row) { return Number(getValue(row, ["qty"])) || 0; }
+    function isScreenTrue(row) {
+      const val = String(getValue(row, ["screen"]) ?? "").trim().toLowerCase();
+      return val === "true" || val === "1" || val === "yes" || val === "y";
+    }
+
+    function setPending(isPending) {
+      pending = isPending;
+      refreshBtnEl.disabled = isPending;
+      backBtnEl.disabled = isPending;
+      addBtnEl.disabled = isPending;
+      saveAddBtnEl.disabled = isPending;
+      cancelAddBtnEl.disabled = isPending;
+      confirmMoveBtnEl.disabled = isPending;
+      cancelMoveBtnEl.disabled = isPending;
+    }
+
+    function setStatus(message, tone) {
+      if (statusTimer) {
+        window.clearTimeout(statusTimer);
+        statusTimer = null;
+      }
+      const text = String(message || "").trim();
+      if (!text) {
+        statusEl.hidden = true;
+        statusEl.textContent = "";
+        statusEl.classList.remove("ok", "error");
+        return;
+      }
+      statusEl.hidden = false;
+      statusEl.textContent = text;
+      statusEl.classList.remove("ok", "error");
+      if (tone === "ok") statusEl.classList.add("ok");
+      if (tone === "error") statusEl.classList.add("error");
+      if (tone === "ok") {
+        statusTimer = window.setTimeout(() => {
+          statusEl.hidden = true;
+        }, 2200);
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function setView(view) {
+      currentView = view;
+      backBtnEl.hidden = view === "tv";
+      addBtnEl.hidden = view !== "product";
+      addPanelEl.hidden = true;
+      if (view === "tv") viewTitleEl.textContent = "TV IDs";
+      if (view === "master") viewTitleEl.textContent = `Masters - TV ${selectedTvId}`;
+      if (view === "product") viewTitleEl.textContent = `Products - ${selectedMaster}`;
+    }
+
+    function clearAddForm() {
+      fProductEl.value = "";
+      fQtyEl.value = "";
+      fPackEl.value = "PACKED";
+      fGroupEl.value = "";
+      fBranchEl.value = "";
+      fScreenEl.value = "false";
+    }
+
+    function buildTvMap(rows) {
+      const map = new Map();
+      rows.forEach((row) => {
+        const tvId = getTvId(row);
+        if (!tvId) return;
+        if (!map.has(tvId)) map.set(tvId, []);
+        map.get(tvId).push(row);
+      });
+      return map;
+    }
+
+    function sortedTvEntries() {
+      return [...tvMap.entries()].sort((a, b) => {
+        const an = Number(a[0]);
+        const bn = Number(b[0]);
+        if (!Number.isNaN(an) && !Number.isNaN(bn)) return an - bn;
+        return a[0].localeCompare(b[0]);
+      });
+    }
+
+    function mastersForTv(tvId) {
+      const rows = tvMap.get(tvId) || [];
+      const set = new Set(rows.map((r) => getMaster(r)).filter(Boolean));
+      return [...set].sort((a, b) => a.localeCompare(b));
+    }
+
+    function renderTvView() {
+      setView("tv");
+      const entries = sortedTvEntries();
+      if (!entries.length) {
+        listEl.innerHTML = '<p class="empty">No TV IDs found.</p>';
+        return;
+      }
+      listEl.innerHTML = entries.map(([tvId, rows]) => `
+        <button class="card clickable" type="button" data-tv-id="${escapeHtml(tvId)}">
+          <div class="row-head"><i class="bi bi-tv"></i><span>TV ${escapeHtml(tvId)}</span></div>
+          <div class="row-meta">${rows.length} rows</div>
+        </button>
+      `).join("");
+      listEl.querySelectorAll("[data-tv-id]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          selectedTvId = btn.getAttribute("data-tv-id") || "";
+          localStorage.setItem(LAST_TV_KEY, selectedTvId);
+          selectedMaster = "";
+          renderMasterView();
+        });
+      });
+    }
+
+    function renderMasterView() {
+      setView("master");
+      const rows = tvMap.get(selectedTvId) || [];
+      const counts = new Map();
+      rows.forEach((row) => {
+        const master = getMaster(row);
+        if (!master) return;
+        counts.set(master, (counts.get(master) || 0) + 1);
+      });
+      const masters = [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+      if (!masters.length) {
+        listEl.innerHTML = '<p class="empty">No masters found for this TV.</p>';
+        return;
+      }
+      listEl.innerHTML = masters.map(([master, count]) => `
+        <button class="card clickable" type="button" data-master="${escapeHtml(master)}">
+          <div class="row-head"><i class="bi bi-person"></i><span>${escapeHtml(master)}</span></div>
+          <div class="row-meta">${count} rows</div>
+        </button>
+      `).join("");
+      listEl.querySelectorAll("[data-master]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          selectedMaster = btn.getAttribute("data-master") || "";
+          renderProductView();
+        });
+      });
+    }
+
+    function renderProductView() {
+      setView("product");
+      const rows = (tvMap.get(selectedTvId) || []).filter((row) => getMaster(row) === selectedMaster);
+      const productMap = new Map();
+      rows.forEach((row) => {
+        const product = getProduct(row);
+        if (!product) return;
+        if (!productMap.has(product)) {
+          productMap.set(product, { count: 0, current: false });
+        }
+        const item = productMap.get(product);
+        item.count += 1;
+        item.current = item.current || isScreenTrue(row);
+      });
+      const products = [...productMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+      if (!products.length) {
+        listEl.innerHTML = '<p class="empty">No products for this master.</p>';
+        return;
+      }
+      listEl.innerHTML = products.map(([product, info]) => `
+        <article class="card">
+          <div class="row-head"><i class="bi bi-box-seam"></i><span>${escapeHtml(product)}</span></div>
+          <div class="row-meta">${info.count} rows</div>
+          ${info.current ? '<span class="badge">Current Screen</span>' : ""}
+          <div class="product-tools">
+            <button class="mini current" type="button" data-act="current" data-product="${escapeHtml(product)}">Set Current</button>
+            <button class="mini" type="button" data-act="move" data-product="${escapeHtml(product)}">Move</button>
+            <button class="mini danger" type="button" data-act="delete" data-product="${escapeHtml(product)}">Delete</button>
+          </div>
+        </article>
+      `).join("");
+      listEl.querySelectorAll("[data-act]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const action = btn.getAttribute("data-act");
+          const product = btn.getAttribute("data-product") || "";
+          if (action === "current") setCurrentProduct(product);
+          if (action === "move") openMoveModal(product);
+          if (action === "delete") deleteProduct(product);
+        });
+      });
+    }
+
+    async function callApi(action, payload) {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action, ...payload })
+      });
+      const json = await res.json();
+      if (!json || json.status !== "success") {
+        throw new Error(json && json.message ? json.message : "Action failed");
+      }
+      return json;
+    }
+
+    function openAddPanel() {
+      if (currentView !== "product") return;
+      clearAddForm();
+      const rows = tvMap.get(selectedTvId) || [];
+      const sample = rows.find((r) => getMaster(r) === selectedMaster);
+      if (sample) {
+        fPackEl.value = getPack(sample) || "PACKED";
+        fGroupEl.value = getGroup(sample);
+        fBranchEl.value = getBranch(sample);
+        fQtyEl.value = getQty(sample) ? String(getQty(sample)) : "";
+      }
+      addPanelEl.hidden = false;
+      fProductEl.focus();
+    }
+
+    async function saveAddProduct() {
+      if (pending) return;
+      const product = String(fProductEl.value || "").trim();
+      if (!product) {
+        setStatus("Product is required.", "error");
+        return;
+      }
+      setPending(true);
+      setStatus("Adding product...", "");
+      try {
+        await callApi("addProduct", {
+          tvid: selectedTvId,
+          master: selectedMaster,
+          product,
+          qty: Number(fQtyEl.value || 0),
+          packFormat: String(fPackEl.value || "").trim(),
+          group: String(fGroupEl.value || "").trim(),
+          branch: String(fBranchEl.value || "").trim(),
+          screen: String(fScreenEl.value || "false")
+        });
+        addPanelEl.hidden = true;
+        await loadData(false);
+        renderProductView();
+        setStatus(`Added ${product}`, "ok");
+      } catch (error) {
+        setStatus(error.message || "Failed to add product.", "error");
+      } finally {
+        setPending(false);
+      }
+    }
+
+    async function setCurrentProduct(product) {
+      if (pending) return;
+      setPending(true);
+      setStatus("Updating current screen...", "");
+      try {
+        await callApi("setCurrentScreen", {
+          tvId: selectedTvId,
+          master: selectedMaster,
+          product
+        });
+        await loadData(false);
+        renderProductView();
+        setStatus(`Current screen set: ${product}`, "ok");
+      } catch (error) {
+        setStatus(error.message || "Failed to set current screen.", "error");
+      } finally {
+        setPending(false);
+      }
+    }
+
+    function openMoveModal(product) {
+      movingProduct = product;
+      moveProductNameEl.value = product;
+      const tvOptions = sortedTvEntries()
+        .map(([tvId]) => `<option value="${escapeHtml(tvId)}">${escapeHtml(tvId)}</option>`)
+        .join("");
+      moveTargetTvEl.innerHTML = tvOptions;
+      moveTargetTvEl.value = selectedTvId;
+      refreshMoveMasterOptions();
+      moveModalEl.hidden = false;
+    }
+
+    function closeMoveModal() {
+      moveModalEl.hidden = true;
+      movingProduct = "";
+    }
+
+    function refreshMoveMasterOptions() {
+      const targetTv = normalizeTvId(moveTargetTvEl.value);
+      const masters = mastersForTv(targetTv);
+      moveTargetMasterEl.innerHTML = masters
+        .map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`)
+        .join("");
+      if (masters.includes(selectedMaster)) {
+        moveTargetMasterEl.value = selectedMaster;
+      }
+    }
+
+    async function confirmMove() {
+      if (pending || !movingProduct) return;
+      const targetTv = normalizeTvId(moveTargetTvEl.value);
+      const targetMaster = String(moveTargetMasterEl.value || "").trim();
+      if (!targetTv || !targetMaster) {
+        setStatus("Select target TV and target master.", "error");
+        return;
+      }
+
+      setPending(true);
+      setStatus("Moving product...", "");
+      try {
+        await callApi("moveProduct", {
+          fromTvId: selectedTvId,
+          toTvId: targetTv,
+          master: selectedMaster,
+          toMaster: targetMaster,
+          product: movingProduct
+        });
+        closeMoveModal();
+        await loadData(false);
+        selectedTvId = targetTv;
+        selectedMaster = targetMaster;
+        renderProductView();
+        setStatus(`Moved ${movingProduct} to TV ${targetTv} / ${targetMaster}`, "ok");
+      } catch (error) {
+        setStatus(error.message || "Failed to move product.", "error");
+      } finally {
+        setPending(false);
+      }
+    }
+
+    async function deleteProduct(product) {
+      if (pending) return;
+      if (!window.confirm(`Delete "${product}" from TV ${selectedTvId}, Master ${selectedMaster}?`)) return;
+      setPending(true);
+      setStatus("Deleting product...", "");
+      try {
+        await callApi("deleteProduct", {
+          tvId: selectedTvId,
+          master: selectedMaster,
+          product
+        });
+        await loadData(false);
+        renderProductView();
+        setStatus(`Deleted ${product}`, "ok");
+      } catch (error) {
+        setStatus(error.message || "Failed to delete product.", "error");
+      } finally {
+        setPending(false);
+      }
+    }
+
+    async function loadData(showStatus) {
+      if (pending) return;
+      refreshBtnEl.disabled = true;
+      if (showStatus !== false) setStatus("Loading data...", "");
+      try {
+        const res = await fetch(API_URL);
+        const json = await res.json();
+        const rows = Array.isArray(json?.data) ? json.data : [];
+        tvMap = buildTvMap(rows);
+
+        const savedTv = normalizeTvId(localStorage.getItem(LAST_TV_KEY));
+        if (savedTv && tvMap.has(savedTv)) {
+          selectedTvId = savedTv;
+        } else if (!tvMap.has(selectedTvId)) {
+          selectedTvId = "";
+        }
+        selectedMaster = "";
+        renderTvView();
+        if (showStatus !== false) setStatus(`${tvMap.size} TVs loaded`, "ok");
+      } catch (error) {
+        tvMap = new Map();
+        selectedTvId = "";
+        selectedMaster = "";
+        renderTvView();
+        setStatus("Unable to load API data.", "error");
+      } finally {
+        refreshBtnEl.disabled = false;
+      }
+    }
+
+    backBtnEl.addEventListener("click", () => {
+      if (pending) return;
+      addPanelEl.hidden = true;
+      if (currentView === "product") {
+        selectedMaster = "";
+        renderMasterView();
+      } else if (currentView === "master") {
+        selectedTvId = "";
+        renderTvView();
+      }
+    });
+
+    addBtnEl.addEventListener("click", () => {
+      openAddPanel();
+    });
+
+    cancelAddBtnEl.addEventListener("click", () => {
+      if (pending) return;
+      addPanelEl.hidden = true;
+    });
+
+    saveAddBtnEl.addEventListener("click", () => {
+      saveAddProduct();
+    });
+
+    refreshBtnEl.addEventListener("click", () => {
+      if (pending) return;
+      addPanelEl.hidden = true;
+      loadData(true);
+    });
+
+    moveTargetTvEl.addEventListener("change", () => {
+      refreshMoveMasterOptions();
+    });
+
+    confirmMoveBtnEl.addEventListener("click", () => {
+      confirmMove();
+    });
+
+    cancelMoveBtnEl.addEventListener("click", () => {
+      if (pending) return;
+      closeMoveModal();
+    });
+
+    moveModalEl.addEventListener("click", (event) => {
+      if (event.target === moveModalEl && !pending) closeMoveModal();
+    });
+
+    loadData(true);
+  </script>
+</body>
+</html>
