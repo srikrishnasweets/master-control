@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <link rel="shortcut icon" href="/Asset/logo.png" type="image/x-icon">
   <title>TV Control Center</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <style>
@@ -168,6 +169,12 @@
       letter-spacing: 0.02em;
     }
 
+    .card.current-product {
+      border-color: #b8deca;
+      background: linear-gradient(180deg, #ffffff 0%, #f3fcf7 100%);
+      box-shadow: 0 8px 18px rgba(24, 121, 70, 0.12);
+    }
+
     .product-tools {
       margin-top: 10px;
       display: flex;
@@ -190,6 +197,14 @@
       border-color: #b8deca;
       background: var(--success-soft);
       color: var(--success);
+    }
+
+    .toggle-icon {
+      font-size: 1rem;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .mini.danger {
@@ -436,7 +451,7 @@
   <p id="status" class="status" hidden></p>
 
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbwba-s2aTC4qHxY5JB1xEZnL0mWJ2ppc5rw-vOWS7szRKqWVlJ75q0C1XpzxXpv1gXR/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbyqL3PT6w6oXGEfgqCwG44Ahxu6o9dhm-7T4kPltKlP5OdAv4uYPo1vPM_WOlEmm3is/exec";
     const LAST_TV_KEY = "tvControlSelectedTv";
 
     const viewTitleEl = document.getElementById("viewTitle");
@@ -660,12 +675,14 @@
         return;
       }
       listEl.innerHTML = products.map(([product, info]) => `
-        <article class="card">
+        <article class="card ${info.current ? "current-product" : ""}">
           <div class="row-head"><i class="bi bi-box-seam"></i><span>${escapeHtml(product)}</span></div>
           <div class="row-meta">${info.count} rows</div>
           ${info.current ? '<span class="badge">Current Screen</span>' : ""}
           <div class="product-tools">
-            <button class="mini current" type="button" data-act="current" data-product="${escapeHtml(product)}">Set Current</button>
+            <button class="mini current" type="button" data-act="current" data-current="${info.current ? "1" : "0"}" data-product="${escapeHtml(product)}" aria-label="${info.current ? "Disable current screen" : "Enable current screen"}">
+              <span class="toggle-icon"><i class="bi ${info.current ? "bi-toggle-on" : "bi-toggle-off"}" aria-hidden="true"></i></span>
+            </button>
             <button class="mini" type="button" data-act="move" data-product="${escapeHtml(product)}">Move</button>
             <button class="mini danger" type="button" data-act="delete" data-product="${escapeHtml(product)}">Delete</button>
           </div>
@@ -675,7 +692,8 @@
         btn.addEventListener("click", () => {
           const action = btn.getAttribute("data-act");
           const product = btn.getAttribute("data-product") || "";
-          if (action === "current") setCurrentProduct(product);
+          const isCurrent = btn.getAttribute("data-current") === "1";
+          if (action === "current") setCurrentProduct(product, !isCurrent);
           if (action === "move") openMoveModal(product);
           if (action === "delete") deleteProduct(product);
         });
@@ -731,7 +749,7 @@
           screen: String(fScreenEl.value || "false")
         });
         addPanelEl.hidden = true;
-        await loadData(false);
+        await loadData(false, true, true);
         renderProductView();
         setStatus(`Added ${product}`, "ok");
       } catch (error) {
@@ -741,21 +759,22 @@
       }
     }
 
-    async function setCurrentProduct(product) {
+    async function setCurrentProduct(product, enabled) {
       if (pending) return;
       setPending(true);
-      setStatus("Updating current screen...", "");
+      setStatus(enabled ? "Adding current screen..." : "Removing current screen...", "");
       try {
-        await callApi("setCurrentScreen", {
+        await callApi("setProductScreenState", {
           tvId: selectedTvId,
           master: selectedMaster,
-          product
+          product,
+          screen: enabled
         });
-        await loadData(false);
+        await loadData(false, true, true);
         renderProductView();
-        setStatus(`Current screen set: ${product}`, "ok");
+        setStatus(enabled ? `Current enabled: ${product}` : `Current removed: ${product}`, "ok");
       } catch (error) {
-        setStatus(error.message || "Failed to set current screen.", "error");
+        setStatus(error.message || "Failed to update current screen.", "error");
       } finally {
         setPending(false);
       }
@@ -809,7 +828,7 @@
           product: movingProduct
         });
         closeMoveModal();
-        await loadData(false);
+        await loadData(false, true, true);
         selectedTvId = targetTv;
         selectedMaster = targetMaster;
         renderProductView();
@@ -832,7 +851,7 @@
           master: selectedMaster,
           product
         });
-        await loadData(false);
+        await loadData(false, true, true);
         renderProductView();
         setStatus(`Deleted ${product}`, "ok");
       } catch (error) {
@@ -842,23 +861,41 @@
       }
     }
 
-    async function loadData(showStatus) {
-      if (pending) return;
+    async function loadData(showStatus, preserveSelection, forceReload) {
+      if (pending && !forceReload) return;
       refreshBtnEl.disabled = true;
       if (showStatus !== false) setStatus("Loading data...", "");
       try {
-        const res = await fetch(API_URL);
+        const previousTvId = selectedTvId;
+        const previousMaster = selectedMaster;
+        const url = `${API_URL}${API_URL.includes("?") ? "&" : "?"}_ts=${Date.now()}`;
+        const res = await fetch(url, { cache: "no-store" });
         const json = await res.json();
         const rows = Array.isArray(json?.data) ? json.data : [];
         tvMap = buildTvMap(rows);
 
-        const savedTv = normalizeTvId(localStorage.getItem(LAST_TV_KEY));
-        if (savedTv && tvMap.has(savedTv)) {
-          selectedTvId = savedTv;
-        } else if (!tvMap.has(selectedTvId)) {
-          selectedTvId = "";
+        if (preserveSelection) {
+          if (previousTvId && tvMap.has(previousTvId)) {
+            selectedTvId = previousTvId;
+          } else {
+            selectedTvId = "";
+          }
+          const availableMasters = mastersForTv(selectedTvId);
+          if (previousMaster && availableMasters.includes(previousMaster)) {
+            selectedMaster = previousMaster;
+          } else {
+            selectedMaster = "";
+          }
+        } else {
+          const savedTv = normalizeTvId(localStorage.getItem(LAST_TV_KEY));
+          if (savedTv && tvMap.has(savedTv)) {
+            selectedTvId = savedTv;
+          } else if (!tvMap.has(selectedTvId)) {
+            selectedTvId = "";
+          }
+          selectedMaster = "";
         }
-        selectedMaster = "";
+
         renderTvView();
         if (showStatus !== false) setStatus(`${tvMap.size} TVs loaded`, "ok");
       } catch (error) {
