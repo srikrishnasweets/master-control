@@ -301,6 +301,7 @@
       <h2 id="viewTitle" class="title">TV IDs</h2>
       <div class="actions">
         <button id="backBtn" class="btn" type="button" hidden>Back</button>
+        <button id="addTvBtn" class="btn primary" type="button">Add TV</button>
         <button id="refreshBtn" class="btn" type="button">Refresh</button>
       </div>
     </section>
@@ -328,15 +329,30 @@
     </div>
   </div>
 
+  <div id="addTvModal" class="modal" hidden>
+    <div class="modal-card">
+      <h3 class="row-head"><i class="bi bi-plus-square"></i><span>Add TV</span></h3>
+      <div class="field">
+        <label for="addTvIdInput">TV ID</label>
+        <input id="addTvIdInput" type="text">
+      </div>
+      <div class="form-actions">
+        <button id="confirmAddTvBtn" class="btn primary" type="button">Add</button>
+        <button id="cancelAddTvBtn" class="btn" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <p id="status" class="status" hidden></p>
 
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbwaF9TqH6RS2X0oX-aEua8XK1wFLL-pymmmAOsaEHHz1VHeFtMY6mJIDPo1fNDCa6-C/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbxCEG2_g3LRZx0b1F3ubXYZ3c56GLsVdx1mpXthzc1IzNdq25JnzvZG5Cs-sLHwKwmR8g/exec";
     const LAST_TV_KEY = "tvControlSelectedTv";
 
     const viewTitleEl = document.getElementById("viewTitle");
     const listEl = document.getElementById("list");
     const backBtnEl = document.getElementById("backBtn");
+    const addTvBtnEl = document.getElementById("addTvBtn");
     const refreshBtnEl = document.getElementById("refreshBtn");
     const statusEl = document.getElementById("status");
     const moveSectionModalEl = document.getElementById("moveSectionModal");
@@ -344,8 +360,17 @@
     const moveSectionTargetTvEl = document.getElementById("moveSectionTargetTv");
     const confirmMoveSectionBtnEl = document.getElementById("confirmMoveSectionBtn");
     const cancelMoveSectionBtnEl = document.getElementById("cancelMoveSectionBtn");
+    const addTvModalEl = document.getElementById("addTvModal");
+    const addTvIdInputEl = document.getElementById("addTvIdInput");
+    const confirmAddTvBtnEl = document.getElementById("confirmAddTvBtn");
+    const cancelAddTvBtnEl = document.getElementById("cancelAddTvBtn");
 
+    const DEFAULT_TV_IDS = ["1", "2", "3"];
     let tvMap = new Map();
+    let allRows = [];
+    let sharedSectionsCache = [];
+    let activeSectionByTv = new Map();
+    let configuredTvIds = DEFAULT_TV_IDS.slice();
     let selectedTvId = "";
     let currentView = "tv";
     let pending = false;
@@ -379,12 +404,19 @@
     function getSection(row) { return String(getValue(row, ["section", "group"]) || "").trim(); }
     function isScreenTrue(row) { return isTrueLike(getValue(row, ["screen"])); }
 
+    function isSharedMode() {
+      return tvMap.size === 0 && sharedSectionsCache.length > 0;
+    }
+
     function setPending(isPending) {
       pending = isPending;
       refreshBtnEl.disabled = isPending;
       backBtnEl.disabled = isPending;
+      addTvBtnEl.disabled = isPending;
       confirmMoveSectionBtnEl.disabled = isPending;
       cancelMoveSectionBtnEl.disabled = isPending;
+      confirmAddTvBtnEl.disabled = isPending;
+      cancelAddTvBtnEl.disabled = isPending;
     }
 
     function setStatus(message, tone) {
@@ -423,6 +455,7 @@
     function setView(view) {
       currentView = view;
       backBtnEl.hidden = view === "tv";
+      addTvBtnEl.hidden = view !== "tv";
       if (view === "tv") viewTitleEl.textContent = "TV IDs";
       if (view === "section") viewTitleEl.textContent = `Sections - TV ${selectedTvId}`;
     }
@@ -438,16 +471,51 @@
       return map;
     }
 
-    function sortedTvEntries() {
-      return [...tvMap.entries()].sort((a, b) => {
-        const an = Number(a[0]);
-        const bn = Number(b[0]);
-        if (!Number.isNaN(an) && !Number.isNaN(bn)) return an - bn;
-        return a[0].localeCompare(b[0]);
+    function buildSharedSections(rows) {
+      const map = new Map();
+      rows.forEach((row) => {
+        const section = getSection(row);
+        if (!section) return;
+        if (!map.has(section)) map.set(section, { count: 0, active: false });
+        map.get(section).count += 1;
       });
+      return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    }
+
+    function getAvailableTvIds() {
+      if (tvMap.size > 0) {
+        return [...tvMap.keys()].sort((a, b) => {
+          const an = Number(a);
+          const bn = Number(b);
+          if (!Number.isNaN(an) && !Number.isNaN(bn)) return an - bn;
+          return a.localeCompare(b);
+        });
+      }
+      if (configuredTvIds.length) return configuredTvIds.slice();
+      return DEFAULT_TV_IDS.slice();
+    }
+
+    function sortedTvEntries() {
+      if (tvMap.size > 0) {
+        return [...tvMap.entries()].sort((a, b) => {
+          const an = Number(a[0]);
+          const bn = Number(b[0]);
+          if (!Number.isNaN(an) && !Number.isNaN(bn)) return an - bn;
+          return a[0].localeCompare(b[0]);
+        });
+      }
+      return getAvailableTvIds().map((tvId) => [tvId, allRows]);
     }
 
     function sectionsForTv(tvId) {
+      if (tvMap.size === 0) {
+        const activeSection = activeSectionByTv.get(tvId) || "";
+        return sharedSectionsCache.map(([name, item]) => [name, {
+          count: item.count,
+          active: Boolean(activeSection && name === activeSection)
+        }]);
+      }
+
       const rows = tvMap.get(tvId) || [];
       const map = new Map();
       rows.forEach((row) => {
@@ -477,6 +545,11 @@
     }
 
     function applyLocalSectionActivation(tvId, sectionName) {
+      if (tvMap.size === 0) {
+        activeSectionByTv.set(tvId, sectionName);
+        return;
+      }
+
       const rows = tvMap.get(tvId) || [];
       rows.forEach((row) => {
         const isTargetSection = getSection(row) === sectionName;
@@ -485,6 +558,8 @@
     }
 
     function sectionItemsForTv(tvId, sectionName) {
+      if (tvMap.size === 0) return [];
+
       const rows = tvMap.get(tvId) || [];
       const filtered = rows.filter((row) => getSection(row) === sectionName);
       const items = new Map();
@@ -542,7 +617,7 @@
             <button class="btn primary" type="button" data-act="activate" data-section="${escapeHtml(section)}" ${info.active ? "disabled" : ""}>
               ${info.active ? "Active" : "Activate"}
             </button>
-            <button class="btn" type="button" data-act="move" data-section="${escapeHtml(section)}">Move TV</button>
+            ${isSharedMode() ? "" : `<button class="btn" type="button" data-act="move" data-section="${escapeHtml(section)}">Move TV</button>`}
           </div>
         </article>
       `).join("");
@@ -593,12 +668,46 @@
       return json;
     }
 
+    async function fetchConfiguredTvIds() {
+      const actions = ["config", "getTvConfig"];
+      for (let i = 0; i < actions.length; i++) {
+        try {
+          const action = actions[i];
+          const query = `${API_URL}${API_URL.includes("?") ? "&" : "?"}action=${encodeURIComponent(action)}&_ts=${Date.now()}`;
+          const res = await fetch(query, { cache: "no-store" });
+          const json = await res.json();
+          const rawList = Array.isArray(json?.tvIds) ? json.tvIds : (Array.isArray(json?.data?.tvIds) ? json.data.tvIds : []);
+          const ids = [...new Set(rawList.map(normalizeTvId).filter(Boolean))];
+          if (ids.length) {
+            ids.sort((a, b) => {
+              const an = Number(a);
+              const bn = Number(b);
+              if (!Number.isNaN(an) && !Number.isNaN(bn)) return an - bn;
+              return a.localeCompare(b);
+            });
+            return ids;
+          }
+        } catch (error) {
+          // Try next config endpoint shape.
+        }
+      }
+      return [];
+    }
+
     async function activateSection(sectionName) {
       if (pending || !sectionName) return;
+      if (isSharedMode()) {
+        const exists = sharedSectionsCache.some(([name]) => name === sectionName);
+        if (!exists) {
+          setStatus("Selected section has no rows.", "error");
+          return;
+        }
+      }
+
       const tvRows = tvMap.get(selectedTvId) || [];
       const toEnable = tvRows.filter((row) => getSection(row) === sectionName);
 
-      if (!toEnable.length) {
+      if (!toEnable.length && !isSharedMode()) {
         setStatus("Selected section has no rows.", "error");
         return;
       }
@@ -622,6 +731,10 @@
 
     async function moveSectionToTv() {
       if (pending || !movingSectionName) return;
+      if (isSharedMode()) {
+        setStatus("Move TV is not available in shared-data mode.", "error");
+        return;
+      }
       const targetTvId = normalizeTvId(moveSectionTargetTvEl.value);
       if (!targetTvId) {
         setStatus("Select target TV.", "error");
@@ -670,23 +783,107 @@
       }
     }
 
+    function openAddTvModal() {
+      if (pending) return;
+      addTvIdInputEl.value = "";
+      addTvModalEl.hidden = false;
+      window.setTimeout(() => addTvIdInputEl.focus(), 0);
+    }
+
+    function closeAddTvModal() {
+      addTvModalEl.hidden = true;
+      addTvIdInputEl.value = "";
+    }
+
+    async function addTv() {
+      if (pending) return;
+      const tvId = normalizeTvId(addTvIdInputEl.value);
+      if (!tvId) {
+        setStatus("Enter valid TV ID.", "error");
+        return;
+      }
+      if (getAvailableTvIds().includes(tvId)) {
+        setStatus(`TV ${tvId} already exists.`, "error");
+        return;
+      }
+
+      setPending(true);
+      setStatus(`Adding TV ${tvId}...`, "");
+      try {
+        await callApi("addTv", { tvId });
+        const nextIds = [...new Set([...configuredTvIds, tvId])];
+        nextIds.sort((a, b) => {
+          const an = Number(a);
+          const bn = Number(b);
+          if (!Number.isNaN(an) && !Number.isNaN(bn)) return an - bn;
+          return a.localeCompare(b);
+        });
+        configuredTvIds = nextIds;
+        closeAddTvModal();
+        selectedTvId = "";
+        setView("tv");
+        await loadData(false, false);
+        renderTvView();
+        setStatus(`TV ${tvId} added`, "ok");
+      } catch (error) {
+        setStatus(error.message || "Failed to add TV.", "error");
+      } finally {
+        setPending(false);
+      }
+    }
+
+    async function fetchActiveSectionForTv(tvId) {
+      try {
+        const query = `${API_URL}${API_URL.includes("?") ? "&" : "?"}tvId=${encodeURIComponent(tvId)}&currentOnly=true&_ts=${Date.now()}`;
+        const res = await fetch(query, { cache: "no-store" });
+        const json = await res.json();
+        const rows = Array.isArray(json?.data) ? json.data : [];
+        if (!rows.length) {
+          activeSectionByTv.delete(tvId);
+          return;
+        }
+        const activeSection = getSection(rows[0]);
+        if (activeSection) {
+          activeSectionByTv.set(tvId, activeSection);
+        } else {
+          activeSectionByTv.delete(tvId);
+        }
+      } catch (error) {
+        // Keep previous active state when API refresh fails for one TV.
+      }
+    }
+
+    async function refreshActiveSections(tvIds) {
+      await Promise.all(tvIds.map((tvId) => fetchActiveSectionForTv(tvId)));
+    }
+
     async function loadData(showStatus, preserveSelection) {
       if (pending) return;
       refreshBtnEl.disabled = true;
       if (showStatus !== false) setStatus("Loading data...", "");
       try {
         const previousTvId = selectedTvId;
+        const fetchedTvIds = await fetchConfiguredTvIds();
+        if (fetchedTvIds.length) {
+          configuredTvIds = fetchedTvIds;
+        }
         const url = `${API_URL}${API_URL.includes("?") ? "&" : "?"}_ts=${Date.now()}`;
         const res = await fetch(url, { cache: "no-store" });
         const json = await res.json();
         const rows = Array.isArray(json?.data) ? json.data : [];
+        allRows = rows;
         tvMap = buildTvMap(rows);
+        sharedSectionsCache = buildSharedSections(rows);
 
-        if (preserveSelection && previousTvId && tvMap.has(previousTvId)) {
+        await refreshActiveSections(getAvailableTvIds());
+
+        const availableTvIds = getAvailableTvIds();
+        const hasPreviousTv = previousTvId && availableTvIds.includes(previousTvId);
+        if (preserveSelection && hasPreviousTv) {
           selectedTvId = previousTvId;
         } else {
           const savedTv = normalizeTvId(localStorage.getItem(LAST_TV_KEY));
-          selectedTvId = savedTv && tvMap.has(savedTv) ? savedTv : "";
+          selectedTvId = savedTv && availableTvIds.includes(savedTv) ? savedTv : "";
         }
 
         if (currentView === "section" && selectedTvId) {
@@ -695,7 +892,7 @@
           renderTvView();
         }
 
-        if (showStatus !== false) setStatus(`${tvMap.size} TVs loaded`, "ok");
+        if (showStatus !== false) setStatus(`${getAvailableTvIds().length} TVs loaded`, "ok");
       } catch (error) {
         tvMap = new Map();
         selectedTvId = "";
@@ -710,6 +907,10 @@
       if (pending) return;
       selectedTvId = "";
       renderTvView();
+    });
+
+    addTvBtnEl.addEventListener("click", () => {
+      openAddTvModal();
     });
 
     refreshBtnEl.addEventListener("click", () => {
@@ -729,6 +930,21 @@
     moveSectionModalEl.addEventListener("click", (event) => {
       if (event.target === moveSectionModalEl && !pending) {
         closeMoveSectionModal();
+      }
+    });
+
+    confirmAddTvBtnEl.addEventListener("click", () => {
+      addTv();
+    });
+
+    cancelAddTvBtnEl.addEventListener("click", () => {
+      if (pending) return;
+      closeAddTvModal();
+    });
+
+    addTvModalEl.addEventListener("click", (event) => {
+      if (event.target === addTvModalEl && !pending) {
+        closeAddTvModal();
       }
     });
 
