@@ -105,7 +105,7 @@
       align-content: start;
     }
 
-    .list {
+    #list.cards-grid {
       display: grid;
       gap: 10px;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -173,6 +173,72 @@
       flex-wrap: wrap;
     }
 
+    .product-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .product-item {
+      border: 1px solid #dbe6f3;
+      border-radius: 10px;
+      padding: 8px 10px;
+      display: grid;
+      gap: 6px;
+      background: #fbfdff;
+    }
+
+    .product-name {
+      font-size: 0.86rem;
+      font-weight: 700;
+      color: #1f466f;
+    }
+
+    .product-meta {
+      font-size: 0.77rem;
+      color: #647b93;
+      font-weight: 600;
+    }
+
+    .product-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .products-table-wrap {
+      width: 100%;
+      overflow: auto;
+      border: 1px solid #dbe6f3;
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .products-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 860px;
+    }
+
+    .products-table th,
+    .products-table td {
+      border-bottom: 1px solid #e6eef8;
+      padding: 8px 10px;
+      text-align: left;
+      font-size: 0.82rem;
+      vertical-align: middle;
+    }
+
+    .products-table thead th {
+      font-size: 0.75rem;
+      letter-spacing: 0.02em;
+      color: #4f6783;
+      background: #f7fbff;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
     .status {
       position: fixed;
       right: 14px;
@@ -207,7 +273,7 @@
     .empty {
       margin: 0;
       color: var(--muted);
-      font-size: 0.92rem;
+      font-size: 1rem;
       padding: 8px 2px;
     }
 
@@ -264,7 +330,7 @@
     }
 
     @media (max-width: 860px) {
-      .list {
+      #list.cards-grid {
         grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
       }
     }
@@ -279,9 +345,19 @@
       .actions .btn {
         flex: 1;
       }
-      .list {
+      #list.cards-grid {
         grid-template-columns: 1fr 1fr;
         gap: 8px;
+      }
+      .products-table {
+        min-width: 100%;
+      }
+      .products-table .col-master,
+      .products-table .col-packed,
+      .products-table .col-tray,
+      .products-table .col-status,
+      .products-table .col-time {
+        display: none;
       }
       .status {
         right: 10px;
@@ -307,7 +383,7 @@
     </section>
 
     <section class="content">
-      <div id="list" class="list"></div>
+      <div id="list"></div>
     </section>
   </main>
 
@@ -343,10 +419,21 @@
     </div>
   </div>
 
+  <div id="statusConfirmModal" class="modal" hidden>
+    <div class="modal-card">
+      <h3 class="row-head"><i class="bi bi-check2-square"></i><span>Confirm Action</span></h3>
+      <p id="statusConfirmMessage" class="empty"></p>
+      <div class="form-actions">
+        <button id="confirmStatusActionBtn" class="btn primary" type="button">Confirm</button>
+        <button id="cancelStatusActionBtn" class="btn" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <p id="status" class="status" hidden></p>
 
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbxCEG2_g3LRZx0b1F3ubXYZ3c56GLsVdx1mpXthzc1IzNdq25JnzvZG5Cs-sLHwKwmR8g/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbxpudYsX6cBGA26wYkh05RlvlqVV96AI0-ce3or2SBnHSu_OwSeSLKme6pV6vbSzQ/exec";
     const LAST_TV_KEY = "tvControlSelectedTv";
 
     const viewTitleEl = document.getElementById("viewTitle");
@@ -364,6 +451,10 @@
     const addTvIdInputEl = document.getElementById("addTvIdInput");
     const confirmAddTvBtnEl = document.getElementById("confirmAddTvBtn");
     const cancelAddTvBtnEl = document.getElementById("cancelAddTvBtn");
+    const statusConfirmModalEl = document.getElementById("statusConfirmModal");
+    const statusConfirmMessageEl = document.getElementById("statusConfirmMessage");
+    const confirmStatusActionBtnEl = document.getElementById("confirmStatusActionBtn");
+    const cancelStatusActionBtnEl = document.getElementById("cancelStatusActionBtn");
 
     const DEFAULT_TV_IDS = ["1", "2", "3"];
     let tvMap = new Map();
@@ -376,6 +467,9 @@
     let pending = false;
     let statusTimer = null;
     let movingSectionName = "";
+    let selectedSectionForProducts = "";
+    const productStatusLocal = new Map();
+    let pendingStatusAction = null;
 
     function normalizeTvId(value) {
       const text = String(value ?? "").trim();
@@ -403,6 +497,17 @@
     function getTvId(row) { return normalizeTvId(getValue(row, ["tv", "tvid", "tv id", "tv_id"])); }
     function getSection(row) { return String(getValue(row, ["section", "group"]) || "").trim(); }
     function isScreenTrue(row) { return isTrueLike(getValue(row, ["screen"])); }
+    function getStatus(row) { return String(getValue(row, ["status"]) || "").trim(); }
+    function getPackedStatus(row) {
+      return String(getValue(row, ["packed status", "packed_status", "packedstatus"]) || "").trim();
+    }
+    function getTrayStatus(row) {
+      return String(getValue(row, ["tray status", "tray_status", "traystatus"]) || "").trim();
+    }
+    function getTime(row) { return String(getValue(row, ["time", "updatedtime", "updated time"]) || "").trim(); }
+    function getPacked(row) { return getValue(row, ["packed"]); }
+    function getTray(row) { return getValue(row, ["tray"]); }
+    function getTotal(row) { return getValue(row, ["total"]); }
 
     function isSharedMode() {
       return tvMap.size === 0 && sharedSectionsCache.length > 0;
@@ -417,6 +522,8 @@
       cancelMoveSectionBtnEl.disabled = isPending;
       confirmAddTvBtnEl.disabled = isPending;
       cancelAddTvBtnEl.disabled = isPending;
+      confirmStatusActionBtnEl.disabled = isPending;
+      cancelStatusActionBtnEl.disabled = isPending;
     }
 
     function setStatus(message, tone) {
@@ -458,6 +565,7 @@
       addTvBtnEl.hidden = view !== "tv";
       if (view === "tv") viewTitleEl.textContent = "TV IDs";
       if (view === "section") viewTitleEl.textContent = `Sections - TV ${selectedTvId}`;
+      if (view === "products") viewTitleEl.textContent = `Products - ${selectedSectionForProducts}`;
     }
 
     function buildTvMap(rows) {
@@ -558,9 +666,7 @@
     }
 
     function sectionItemsForTv(tvId, sectionName) {
-      if (tvMap.size === 0) return [];
-
-      const rows = tvMap.get(tvId) || [];
+      const rows = tvMap.size === 0 ? allRows : (tvMap.get(tvId) || []);
       const filtered = rows.filter((row) => getSection(row) === sectionName);
       const items = new Map();
       filtered.forEach((row) => {
@@ -568,13 +674,289 @@
         const product = String(getValue(row, ["product"]) || "").trim();
         if (!master || !product) return;
         const key = `${master}::${product}`;
-        if (!items.has(key)) items.set(key, { master, product });
+        if (!items.has(key)) {
+          items.set(key, {
+            master,
+            product,
+            packed: getPacked(row),
+            tray: getTray(row),
+            total: getTotal(row),
+            packedStatus: getPackedStatus(row),
+            trayStatus: getTrayStatus(row),
+            status: getStatus(row),
+            time: getTime(row)
+          });
+        }
       });
-      return [...items.values()];
+      return [...items.values()].sort((a, b) => a.product.localeCompare(b.product));
+    }
+
+    function getLocalStatusKey(tvId, section, master, product) {
+      return [normalizeTvId(tvId), section, master, product].join("::");
+    }
+
+    function getProductStatusState(tvId, section, item) {
+      const key = getLocalStatusKey(tvId, section, item.master, item.product);
+      const local = productStatusLocal.get(key);
+      if (local) return local;
+      const legacy = item.status || "";
+      return {
+        packedStatus: item.packedStatus || legacy || "",
+        trayStatus: item.trayStatus || legacy || "",
+        time: item.time || ""
+      };
+    }
+
+    function isCompletedStatus(statusValue) {
+      const value = String(statusValue || "").trim().toLowerCase();
+      return value === "done" || value === "complete" || value === "completed" || value === "packed" || value === "tray";
+    }
+
+    function hasCompletableQty(value) {
+      const text = String(value ?? "").trim().toLowerCase();
+      if (!text || text === "nil" || text === "-") return false;
+      const num = Number(text);
+      return Number.isFinite(num) && num > 0;
+    }
+
+    function openProductsView(sectionName) {
+      selectedSectionForProducts = sectionName;
+      renderProductsView();
+    }
+
+    function openStatusConfirmModal(action) {
+      if (!action) return;
+      pendingStatusAction = action;
+      statusConfirmMessageEl.textContent = action.message || "Are you sure?";
+      confirmStatusActionBtnEl.textContent = action.confirmLabel || "Confirm";
+      statusConfirmModalEl.hidden = false;
+    }
+
+    function closeStatusConfirmModal() {
+      if (pending) return;
+      pendingStatusAction = null;
+      statusConfirmMessageEl.textContent = "";
+      confirmStatusActionBtnEl.textContent = "Confirm";
+      statusConfirmModalEl.hidden = true;
+    }
+
+    async function confirmStatusAction() {
+      if (pending || !pendingStatusAction) return;
+      const action = pendingStatusAction;
+      pendingStatusAction = null;
+      statusConfirmModalEl.hidden = true;
+      await updateProductStatus(action.master, action.product, action.statusType, action.statusValue, action.successMessage);
+    }
+
+    function renderProductsView() {
+      setView("products");
+      listEl.className = "";
+      if (!selectedTvId || !selectedSectionForProducts) {
+        listEl.innerHTML = '<p class="empty">No products found.</p>';
+        return;
+      }
+      const items = sectionItemsForTv(selectedTvId, selectedSectionForProducts);
+      if (!items.length) {
+        listEl.innerHTML = '<p class="empty">No products found in this section.</p>';
+        return;
+      }
+
+      listEl.innerHTML = `
+        <div class="products-table-wrap">
+          <table class="products-table">
+            <thead>
+              <tr>
+                <th class="col-product">PRODUCT</th>
+                <th class="col-master">MASTER</th>
+                <th class="col-packed">PACKED</th>
+                <th class="col-tray">TRAY</th>
+                <th class="col-total">TOTAL</th>
+                <th class="col-status">PACKED STATUS</th>
+                <th class="col-status">TRAY STATUS</th>
+                <th class="col-time">TIME</th>
+                <th class="col-action">ACTION</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map((item) => {
+                const state = getProductStatusState(selectedTvId, selectedSectionForProducts, item);
+                const packedStatusText = state.packedStatus || "Pending";
+                const trayStatusText = state.trayStatus || "Pending";
+                const timeText = state.time || "-";
+                const packedDone = isCompletedStatus(packedStatusText);
+                const trayDone = isCompletedStatus(trayStatusText);
+                const showPackedAction = packedDone || hasCompletableQty(item.packed);
+                const showTrayAction = trayDone || hasCompletableQty(item.tray);
+                return `
+                  <tr>
+                    <td class="col-product">${escapeHtml(item.product)}</td>
+                    <td class="col-master">${escapeHtml(item.master || "-")}</td>
+                    <td class="num col-packed">${escapeHtml(String(item.packed ?? "-"))}</td>
+                    <td class="num col-tray">${escapeHtml(String(item.tray ?? "-"))}</td>
+                    <td class="num col-total">${escapeHtml(String(item.total ?? "-"))}</td>
+                    <td class="col-status">${escapeHtml(packedStatusText)}</td>
+                    <td class="col-status">${escapeHtml(trayStatusText)}</td>
+                    <td class="col-time">${escapeHtml(timeText)}</td>
+                    <td class="col-action">
+                      ${showPackedAction ? (packedDone ? `
+                        <button
+                          class="btn"
+                          type="button"
+                          data-act="undo-packed"
+                          data-master="${escapeHtml(item.master)}"
+                          data-product="${escapeHtml(item.product)}">
+                          Undo Packed
+                        </button>
+                      ` : `
+                        <button
+                          class="btn primary"
+                          type="button"
+                          data-act="set-status-packed"
+                          data-master="${escapeHtml(item.master)}"
+                          data-product="${escapeHtml(item.product)}"
+                          data-packed="${escapeHtml(String(item.packed ?? "-"))}">
+                          Packed
+                        </button>
+                      `) : ""}
+                      ${showTrayAction ? (trayDone ? `
+                        <button
+                          class="btn"
+                          type="button"
+                          data-act="undo-tray"
+                          data-master="${escapeHtml(item.master)}"
+                          data-product="${escapeHtml(item.product)}">
+                          Undo Tray
+                        </button>
+                      ` : `
+                        <button
+                          class="btn primary"
+                          type="button"
+                          data-act="set-status-tray"
+                          data-master="${escapeHtml(item.master)}"
+                          data-product="${escapeHtml(item.product)}"
+                          data-tray="${escapeHtml(String(item.tray ?? "-"))}">
+                          Tray
+                        </button>
+                      `) : ""}
+                    </td>
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      listEl.querySelectorAll('[data-act="set-status-packed"]').forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const master = btn.getAttribute("data-master") || "";
+          const product = btn.getAttribute("data-product") || "";
+          const packedQty = btn.getAttribute("data-packed") || "-";
+          openStatusConfirmModal({
+            master,
+            product,
+            statusType: "packed",
+            statusValue: "Completed",
+            message: `${product} ${packedQty} is completed.`,
+            confirmLabel: "Confirm Packed",
+            successMessage: `${product} marked as Packed`
+          });
+        });
+      });
+
+      listEl.querySelectorAll('[data-act="set-status-tray"]').forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const master = btn.getAttribute("data-master") || "";
+          const product = btn.getAttribute("data-product") || "";
+          const trayQty = btn.getAttribute("data-tray") || "-";
+          openStatusConfirmModal({
+            master,
+            product,
+            statusType: "tray",
+            statusValue: "Completed",
+            message: `${product} ${trayQty} is completed.`,
+            confirmLabel: "Confirm Tray",
+            successMessage: `${product} marked as Tray`
+          });
+        });
+      });
+
+      listEl.querySelectorAll('[data-act="undo-packed"]').forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const master = btn.getAttribute("data-master") || "";
+          const product = btn.getAttribute("data-product") || "";
+          openStatusConfirmModal({
+            master,
+            product,
+            statusType: "packed",
+            statusValue: "Pending",
+            message: `Undo Packed completion for ${product}?`,
+            confirmLabel: "Confirm Undo Packed",
+            successMessage: `${product} Packed reverted`
+          });
+        });
+      });
+
+      listEl.querySelectorAll('[data-act="undo-tray"]').forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const master = btn.getAttribute("data-master") || "";
+          const product = btn.getAttribute("data-product") || "";
+          openStatusConfirmModal({
+            master,
+            product,
+            statusType: "tray",
+            statusValue: "Pending",
+            message: `Undo Tray completion for ${product}?`,
+            confirmLabel: "Confirm Undo Tray",
+            successMessage: `${product} Tray reverted`
+          });
+        });
+      });
+    }
+
+    async function updateProductStatus(master, product, statusType, statusValue, successMessage) {
+      if (pending || !selectedTvId || !selectedSectionForProducts || !master || !product || !statusType) return;
+      setPending(true);
+      setStatus(`Updating ${product}...`, "");
+      try {
+        const now = new Date();
+        const localTime = now.toLocaleString();
+        const result = await callApi("updateProductStatus", {
+          tvId: selectedTvId,
+          section: selectedSectionForProducts,
+          master,
+          product,
+          statusType,
+          status: statusValue,
+          time: localTime
+        });
+        const key = getLocalStatusKey(selectedTvId, selectedSectionForProducts, master, product);
+        const item = sectionItemsForTv(selectedTvId, selectedSectionForProducts)
+          .find((x) => x.master === master && x.product === product);
+        const baseState = item
+          ? getProductStatusState(selectedTvId, selectedSectionForProducts, item)
+          : { packedStatus: "", trayStatus: "", time: "" };
+        const existingState = productStatusLocal.get(key) || baseState;
+        const nextState = {
+          packedStatus: existingState.packedStatus,
+          trayStatus: existingState.trayStatus,
+          time: localTime
+        };
+        if (statusType === "packed") nextState.packedStatus = statusValue;
+        if (statusType === "tray") nextState.trayStatus = statusValue;
+        productStatusLocal.set(key, nextState);
+        renderProductsView();
+        setStatus(result?.message || successMessage || `${product} updated`, "ok");
+      } catch (error) {
+        setStatus(error.message || "Failed to update product status.", "error");
+      } finally {
+        setPending(false);
+      }
     }
 
     function renderTvView() {
       setView("tv");
+      listEl.className = "cards-grid";
       const entries = sortedTvEntries();
       if (!entries.length) {
         listEl.innerHTML = '<p class="empty">No TV IDs found.</p>';
@@ -602,6 +984,7 @@
 
     function renderSectionView() {
       setView("section");
+      listEl.className = "cards-grid";
       const sections = sectionsForTv(selectedTvId);
       if (!sections.length) {
         listEl.innerHTML = '<p class="empty">No sections found for this TV.</p>';
@@ -609,7 +992,7 @@
       }
 
       listEl.innerHTML = sections.map(([section, info]) => `
-        <article class="card ${info.active ? "active-section" : ""}">
+        <article class="card clickable ${info.active ? "active-section" : ""}" data-section-card="${escapeHtml(section)}">
           <div class="row-head"><i class="bi bi-grid-1x2"></i><span>${escapeHtml(section)}</span></div>
           <div class="row-meta">${info.count} rows</div>
           ${info.active ? '<span class="badge">Live Section</span>' : ""}
@@ -622,8 +1005,17 @@
         </article>
       `).join("");
 
+      listEl.querySelectorAll("[data-section-card]").forEach((card) => {
+        card.addEventListener("click", () => {
+          const section = card.getAttribute("data-section-card") || "";
+          if (!section) return;
+          openProductsView(section);
+        });
+      });
+
       listEl.querySelectorAll("[data-act]").forEach((btn) => {
-        btn.addEventListener("click", () => {
+        btn.addEventListener("click", (event) => {
+          event.stopPropagation();
           const action = btn.getAttribute("data-act");
           const section = btn.getAttribute("data-section") || "";
           if (action === "activate") activateSection(section);
@@ -662,7 +1054,12 @@
         body: JSON.stringify({ action, ...payload })
       });
       const json = await res.json();
-      if (!json || json.status !== "success") {
+      const statusText = String(json?.status || "").toLowerCase();
+      const isSuccessStatus = statusText === "success" || statusText === "ok";
+      const hasChangedRows = Number(json?.changed) > 0;
+      const updatedMessage = /updated\s+\d+\s+row/i.test(String(json?.message || ""));
+      const isUpdateProductSuccess = action === "updateProductStatus" && (hasChangedRows || updatedMessage);
+      if (!json || (!isSuccessStatus && !isUpdateProductSuccess)) {
         throw new Error(json && json.message ? json.message : "Action failed");
       }
       return json;
@@ -888,6 +1285,8 @@
 
         if (currentView === "section" && selectedTvId) {
           renderSectionView();
+        } else if (currentView === "products" && selectedTvId && selectedSectionForProducts) {
+          renderProductsView();
         } else {
           renderTvView();
         }
@@ -905,7 +1304,12 @@
 
     backBtnEl.addEventListener("click", () => {
       if (pending) return;
+      if (currentView === "products") {
+        renderSectionView();
+        return;
+      }
       selectedTvId = "";
+      selectedSectionForProducts = "";
       renderTvView();
     });
 
@@ -945,6 +1349,20 @@
     addTvModalEl.addEventListener("click", (event) => {
       if (event.target === addTvModalEl && !pending) {
         closeAddTvModal();
+      }
+    });
+
+    confirmStatusActionBtnEl.addEventListener("click", () => {
+      confirmStatusAction();
+    });
+
+    cancelStatusActionBtnEl.addEventListener("click", () => {
+      closeStatusConfirmModal();
+    });
+
+    statusConfirmModalEl.addEventListener("click", (event) => {
+      if (event.target === statusConfirmModalEl && !pending) {
+        closeStatusConfirmModal();
       }
     });
 
