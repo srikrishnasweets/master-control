@@ -433,7 +433,7 @@
   <p id="status" class="status" hidden></p>
 
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycby0t1hNhPtflVTcqay2cooBSRawRDt6mgWPyMYisfS8TmqUo47U6nlDhVXhGlJ6g092HA/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbzfhXbsIg7qqBhR9_TS8VxZpgLGrz8-M_A2QD6p3J5ubHN0wEfZ4TsxQIiIvrc67aNo/exec";
     const LAST_TV_KEY = "tvControlSelectedTv";
 
     const viewTitleEl = document.getElementById("viewTitle");
@@ -505,6 +505,12 @@
       return String(getValue(row, ["tray status", "tray_status", "traystatus"]) || "").trim();
     }
     function getTime(row) { return String(getValue(row, ["time", "updatedtime", "updated time"]) || "").trim(); }
+    function getPackedTime(row) {
+      return String(getValue(row, ["packed time", "packed_time", "packedtime"]) || "").trim();
+    }
+    function getTrayTime(row) {
+      return String(getValue(row, ["tray time", "tray_time", "traytime"]) || "").trim();
+    }
     function getPacked(row) { return getValue(row, ["packed"]); }
     function getTray(row) { return getValue(row, ["tray"]); }
     function getTotal(row) { return getValue(row, ["total"]); }
@@ -684,7 +690,9 @@
             packedStatus: getPackedStatus(row),
             trayStatus: getTrayStatus(row),
             status: getStatus(row),
-            time: getTime(row)
+            time: getTime(row),
+            packedTime: getPackedTime(row),
+            trayTime: getTrayTime(row)
           });
         }
       });
@@ -698,12 +706,20 @@
     function getProductStatusState(tvId, section, item) {
       const key = getLocalStatusKey(tvId, section, item.master, item.product);
       const local = productStatusLocal.get(key);
-      if (local) return local;
       const legacy = item.status || "";
-      return {
+      const legacyTime = item.time || "";
+      const baseState = {
         packedStatus: item.packedStatus || legacy || "",
         trayStatus: item.trayStatus || legacy || "",
-        time: item.time || ""
+        packedTime: item.packedTime || (isCompletedStatus(item.packedStatus || legacy) ? legacyTime : ""),
+        trayTime: item.trayTime || (isCompletedStatus(item.trayStatus || legacy) ? legacyTime : "")
+      };
+      if (!local) return baseState;
+      return {
+        packedStatus: local.packedStatus || baseState.packedStatus,
+        trayStatus: local.trayStatus || baseState.trayStatus,
+        packedTime: local.packedTime !== undefined ? local.packedTime : baseState.packedTime,
+        trayTime: local.trayTime !== undefined ? local.trayTime : baseState.trayTime
       };
     }
 
@@ -773,7 +789,8 @@
                 <th class="col-total">TOTAL</th>
                 <th class="col-status">PACKED STATUS</th>
                 <th class="col-status">TRAY STATUS</th>
-                <th class="col-time">TIME</th>
+                <th class="col-time">PACKED TIME</th>
+                <th class="col-time">TRAY TIME</th>
                 <th class="col-action">ACTION</th>
               </tr>
             </thead>
@@ -782,7 +799,8 @@
                 const state = getProductStatusState(selectedTvId, selectedSectionForProducts, item);
                 const packedStatusText = state.packedStatus || "Pending";
                 const trayStatusText = state.trayStatus || "Pending";
-                const timeText = state.time || "-";
+                const packedTimeText = state.packedTime || "-";
+                const trayTimeText = state.trayTime || "-";
                 const packedDone = isCompletedStatus(packedStatusText);
                 const trayDone = isCompletedStatus(trayStatusText);
                 const showPackedAction = packedDone || hasCompletableQty(item.packed);
@@ -796,7 +814,8 @@
                     <td class="num col-total">${escapeHtml(String(item.total ?? "-"))}</td>
                     <td class="col-status">${escapeHtml(packedStatusText)}</td>
                     <td class="col-status">${escapeHtml(trayStatusText)}</td>
-                    <td class="col-time">${escapeHtml(timeText)}</td>
+                    <td class="col-time">${escapeHtml(packedTimeText)}</td>
+                    <td class="col-time">${escapeHtml(trayTimeText)}</td>
                     <td class="col-action">
                       ${showPackedAction ? (packedDone ? `
                         <button
@@ -921,29 +940,43 @@
       try {
         const now = new Date();
         const localTime = now.toLocaleString();
-        const result = await callApi("updateProductStatus", {
+        const nextTimeValue = isCompletedStatus(statusValue) ? localTime : "";
+        const payload = {
           tvId: selectedTvId,
           section: selectedSectionForProducts,
           master,
           product,
           statusType,
           status: statusValue,
-          time: localTime
+          // Keep legacy key for backward compatibility while separate columns are used.
+          time: nextTimeValue
+        };
+        if (statusType === "packed") payload.packedTime = nextTimeValue;
+        if (statusType === "tray") payload.trayTime = nextTimeValue;
+        const result = await callApi("updateProductStatus", {
+          ...payload
         });
         const key = getLocalStatusKey(selectedTvId, selectedSectionForProducts, master, product);
         const item = sectionItemsForTv(selectedTvId, selectedSectionForProducts)
           .find((x) => x.master === master && x.product === product);
         const baseState = item
           ? getProductStatusState(selectedTvId, selectedSectionForProducts, item)
-          : { packedStatus: "", trayStatus: "", time: "" };
+          : { packedStatus: "", trayStatus: "", packedTime: "", trayTime: "" };
         const existingState = productStatusLocal.get(key) || baseState;
         const nextState = {
           packedStatus: existingState.packedStatus,
           trayStatus: existingState.trayStatus,
-          time: localTime
+          packedTime: existingState.packedTime || "",
+          trayTime: existingState.trayTime || ""
         };
-        if (statusType === "packed") nextState.packedStatus = statusValue;
-        if (statusType === "tray") nextState.trayStatus = statusValue;
+        if (statusType === "packed") {
+          nextState.packedStatus = statusValue;
+          nextState.packedTime = nextTimeValue;
+        }
+        if (statusType === "tray") {
+          nextState.trayStatus = statusValue;
+          nextState.trayTime = nextTimeValue;
+        }
         productStatusLocal.set(key, nextState);
         renderProductsView();
         setStatus(result?.message || successMessage || `${product} updated`, "ok");
